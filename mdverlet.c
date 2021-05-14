@@ -54,10 +54,9 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
             ay[k] += fy;
             ax[j] -= fx;
             ay[j] -= fy;
-         }
-         pe += uf[0];
+            pe += uf[0];
+           }
     }
-
     return pe; //returns the potential energy of the system at this time step
 }
 
@@ -77,18 +76,21 @@ ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[]
         vx[i] += ax[i] * halfdt;
         vy[i] += ay[i] * halfdt;
 
-        ke += vx[i]*vx[i] + vy[i]*vy[i];
-
         printf("%lf\n", vx[i]);
     }
-    ke *= 0.5;
+
     double pe = computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
 
     //add new acceleration terms
     for(int i=0; i<N; i++){
         vx[i] += ax[i]*halfdt;
         vy[i] += ay[i]*halfdt;
+
+      	ke += vx[i]*vx[i] + vy[i]*vy[i];
+        x[i] = pbcPosition(x[i], Lx);
+        y[i] = pbcPosition(y[i], Ly);
     }
+    ke *= 0.5;
 
     ETuple energies = {ke, pe, ke+pe};
 
