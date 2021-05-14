@@ -32,38 +32,7 @@ void ljp(double uf[], double r2){
     uf[1] = 24.0/r2 * ( 2.0 * oneOverR12 - oneOverR6); //force over r
 }
 
-ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N){
-    //take one step in the Verlet Algorithm
-    //each x[i], vx[i], etc is associated with ONE particle
-    double halfdt = 0.5 * dt;
-    double halfdt2 = halfdt * dt;
-
-    double ke;
-
-    //loop over all particles
-    for (i=0; i<N; i++){
-        x[i] = x[i] + vx[i] * dt + ax[i] * halfdt2;
-        y[i] = y[i] + vy[i] * dt + ay[i] * halfdt2;
-
-        vx[i] += ax[i] * halfdt;
-        vy[i] += ay[i] * halfdt;
-    }
-    double pe = computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
-
-    //add new acceleration terms
-    for(int i=0; i<N; i++){
-        vx[i] += ax[i]*halfdt;
-        vy[i] += ay[i]*halfdt;
-
-        ke += 0.5 * (vx[i]*vx[i] + vy[i]*vy[i]);
-    }
-
-    ETuple energies = {ke, pe, ke+pe};
-
-    return energies; //return the kinetic and potential energies of this step
-}
-
-double computeAcceleration(double ax[], double ay[], double x[], double y[], double uf[], double Lx, double Ly, int N){    
+double computeAcceleration(double ax[], double ay[], double x[], double y[], double uf[], double Lx, double Ly, int N){
     //compute acceleration
     for (int k=0; k<N; k++){
         ax[k] = 0;
@@ -85,12 +54,45 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
             ay[k] += fy;
             ax[j] -= fx;
             ay[j] -= fy;
-
-            pe += uf[0];
-        }
+         }
+         pe += uf[0];
     }
 
     return pe; //returns the potential energy of the system at this time step
+}
+
+ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N){
+    //take one step in the Verlet Algorithm
+    //each x[i], vx[i], etc is associated with ONE particle
+    double halfdt = 0.5 * dt;
+    double halfdt2 = halfdt * dt;
+
+    double ke = 0.0;
+
+    //loop over all particles
+    for (int i=0; i<N; i++){
+        x[i] = x[i] + vx[i] * dt + ax[i] * halfdt2;
+        y[i] = y[i] + vy[i] * dt + ay[i] * halfdt2;
+
+        vx[i] += ax[i] * halfdt;
+        vy[i] += ay[i] * halfdt;
+
+        ke += vx[i]*vx[i] + vy[i]*vy[i];
+
+        printf("%lf\n", vx[i]);
+    }
+    ke *= 0.5;
+    double pe = computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
+
+    //add new acceleration terms
+    for(int i=0; i<N; i++){
+        vx[i] += ax[i]*halfdt;
+        vy[i] += ay[i]*halfdt;
+    }
+
+    ETuple energies = {ke, pe, ke+pe};
+
+    return energies; //return the kinetic and potential energies of this step
 }
 
 void setVelocities(double vx[], double vy[], double initialKE, int N){
@@ -160,29 +162,31 @@ void setRectangularLattice(double x[], double y[], double Lx, double Ly, int nx,
     }
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char **argv){
 
     if(argc!=9){
         fprintf(stderr, "mdverlet requires 8 args: nx, ny, Lx, Ly, dt, tmax, initialKE, and init.\n");
          return 1;
     }
 
-    int nx = argv[1];
-    int ny = argv[2];
-    double Lx = argv[3];
-    double Ly = argv[4];
-    double dt = argv[5];
-    double tmax = argv[6];
-    double initialKE = argv[7];
-    char init[5] = argv[8];
+    int nx = atoi(argv[1]);
+    int ny = atoi(argv[2]);
+    double Lx = atof(argv[3]);
+    double Ly = atof(argv[4]);
+    double dt = atof(argv[5]);
+    double tmax = atof(argv[6]);
+    double initialKE = atof(argv[7]);
 
     double *x, *y, *vx, *vy, *ax, *ay;
-    x = calloc(N,sizeof(double));
-    y = calloc(N,sizeof(double));
-    vx = calloc(N,sizeof(double));
-    vy = calloc(N,sizeof(double));
-    ax = calloc(N,sizeof(double));
-    ay = calloc(N,sizeof(double));
+
+    int N = nx*ny;
+
+    x = malloc(N*sizeof(double));
+    y = malloc(N*sizeof(double));
+    vx = malloc(N*sizeof(double));
+    vy = malloc(N*sizeof(double));
+    ax = malloc(N*sizeof(double));
+    ay = malloc(N*sizeof(double));
 
     double uf[2] = {0};
 
@@ -194,12 +198,10 @@ int main(int argc, char *argv[]){
 
     double radius = 0.5;
 
-    N = nx*ny;
-
-    if (strcmp(init, "rect"){
+    if (strcmp(argv[8], "rect")==0){
         setRectangularLattice(x, y, Lx, Ly, nx, ny);
     }
-    else if(strcmp(init, "rand")){
+    else if(strcmp(argv[8], "rand")==0){
         setPositions(x, y, Lx, Ly, N);
     }
     else {
@@ -209,26 +211,22 @@ int main(int argc, char *argv[]){
 
     setVelocities(vx, vy, initialKE, N);
     computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
-
-    FILE* fp = fopen("test.dat", w);
+    FILE* fp = fopen("test.dat", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
     fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, initialKE, uf[0], initialKE+uf[0]);
 
     while(t<tmax){
         t+=dt;
-        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, i, dt, N);
-        fprintf(fp, "%lf \t %lf \t %lf \n", t, energies.k, energies.u, energies.e);
+        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N);
+        fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k, energies.u, energies.e);
     }
+
+    fclose(fp);
+    free(x);
+    free(y);
+    free(vx);
+    free(vy);
+    free(ax);
+    free(ay);
 }
-
-
-
-
-
-
-
-
-
-
-
