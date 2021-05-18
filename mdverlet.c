@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -17,7 +18,7 @@ double pbcPosition(double s, double L){
 }
 
 double pbcSeparation(double ds, double L){
-    return fmod(ds, L);
+    return fmod(ds, 0.5*L);
 }
 
 void ljp(double uf[], double r2){
@@ -75,8 +76,6 @@ ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[]
 
         vx[i] += ax[i] * halfdt;
         vy[i] += ay[i] * halfdt;
-
-        printf("%lf\n", vx[i]);
     }
 
     double pe = computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
@@ -90,7 +89,7 @@ ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[]
         x[i] = pbcPosition(x[i], Lx);
         y[i] = pbcPosition(y[i], Ly);
     }
-    ke *= 0.5;
+    ke = ke * 0.5;
 
     ETuple energies = {ke, pe, ke+pe};
 
@@ -216,7 +215,7 @@ int main(int argc, char **argv){
     FILE* fp = fopen("test.dat", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
-    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, initialKE, uf[0], initialKE+uf[0]);
+    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, N*initialKE, uf[0], N*initialKE+uf[0]);
 
     while(t<tmax){
         t+=dt;
