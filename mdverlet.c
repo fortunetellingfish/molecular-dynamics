@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -13,12 +12,15 @@ typedef struct ETuple{
 } ETuple;
 
 double pbcPosition(double s, double L){
-    //applies the periodic BC's
+    //applies the periodic BC's to a position
     return s<0 ? fmod(s, L)+L : fmod(s,L);
 }
 
 double pbcSeparation(double ds, double L){
-    return fmod(ds, 0.5*L);
+    // finds shortest distance between particles by applying PBC's
+    if (ds <= -0.5*L){ds += L;}
+    else if (ds >= 0.5*L){ds -= L;}
+    return ds;
 }
 
 void ljp(double uf[], double r2){
@@ -46,7 +48,7 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
         for (int j=k+1; j<N; j++){
             double dx = pbcSeparation(x[k] - x[j], Lx);
             double dy = pbcSeparation(y[k] - y[j], Ly);
-            double r2 = dx*dx + dy*dy;
+            double r2 = dx*dx + dy*dy ;
             ljp(uf, r2);
             double fx = uf[1] * dx;
             double fy = uf[1] * dy;
@@ -61,7 +63,7 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
     return pe; //returns the potential energy of the system at this time step
 }
 
-ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N){
+ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N, FILE *pos){
     //take one step in the Verlet Algorithm
     //each x[i], vx[i], etc is associated with ONE particle
     double halfdt = 0.5 * dt;
@@ -88,6 +90,7 @@ ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[]
       	ke += vx[i]*vx[i] + vy[i]*vy[i];
         x[i] = pbcPosition(x[i], Lx);
         y[i] = pbcPosition(y[i], Ly);
+        fprintf(pos, "1 %lf %lf 0\n", x[i], y[i]);
     }
     ke = ke * 0.5;
 
@@ -109,8 +112,8 @@ void setVelocities(double vx[], double vy[], double initialKE, int N){
         vxSum += vx[i];
         vySum += vy[i];
     }
-    double vxcm = vxSum/(double) N; // centre of mass momentum (velocity)
-    double vycm = vySum/(double) N;
+    double vxcm = vxSum/((double) N); // centre of mass momentum (velocity)
+    double vycm = vySum/((double) N);
     for (int i=0; i<N; ++i){
         vx[i] -= vxcm;
         vy[i] -= vycm;
@@ -120,8 +123,9 @@ void setVelocities(double vx[], double vy[], double initialKE, int N){
     for(int i=0; i<N; ++i){
         v2sum += vx[i] * vx[i] + vy[i] * vy[i];
     }
-    double kePerParticle = 0.5*v2sum/ (double) N;
+    double kePerParticle = 0.5*v2sum/((double) N);
     double rescale = sqrt(initialKE/kePerParticle);
+
     for(int i=0; i<N; ++i){
         vx[i] *= rescale;
         vy[i] *= rescale;
@@ -151,14 +155,15 @@ void setPositions(double x[], double y[], double Lx, double Ly, int N){
 }
 
 void setRectangularLattice(double x[], double y[], double Lx, double Ly, int nx, int ny){
-    double dx = Lx/(double) nx; //distance btw columns
-    double dy = Ly/(double) ny; //distance btw rows
+    double dx = Lx/((double) nx); //distance btw columns
+    double dy = Ly/((double) ny); //distance btw rows
 
     for(int ix=0; ix<nx; ++ix){
         for(int iy=0; iy<ny; ++iy){
             int i = ix + iy*ny;
             x[i] = dx * (ix+0.5);
             y[i] = dy * (iy+0.5);
+
         }
     }
 }
@@ -191,7 +196,7 @@ int main(int argc, char **argv){
 
     double uf[2] = {0};
 
-    double rho = (double) N/(Lx*Ly);
+    double rho = ((double) N)/(Lx*Ly);
 
     double t=0.0;
 
@@ -212,22 +217,30 @@ int main(int argc, char **argv){
 
     setVelocities(vx, vy, initialKE, N);
     computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
+
     FILE* fp = fopen("test.dat", "w");
+    FILE* pos = fopen("pos.xyz", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
-    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, N*initialKE, uf[0], N*initialKE+uf[0]);
+    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, ((double) N)*initialKE, uf[0], ((double) N)*initialKE+uf[0]);
+
+    fprintf(pos, "%i\n\n", N);
 
     while(t<tmax){
         t+=dt;
-        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N);
+        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N, pos);
         fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k, energies.u, energies.e);
+        fprintf(pos, "%i\n\n", N);
     }
 
     fclose(fp);
+    fclose(pos);
     free(x);
     free(y);
     free(vx);
     free(vy);
     free(ax);
     free(ay);
+
+    return 0;
 }
