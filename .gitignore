@@ -3,3 +3,5 @@ modulus
 modulus*
 ljp*
 mdverlet
+*.xyz
+vmd*
