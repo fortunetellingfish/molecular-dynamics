@@ -5,3 +5,5 @@ ljp*
 mdverlet
 *.xyz
 vmd*
+*.cfg
+gen-cubic-lattice

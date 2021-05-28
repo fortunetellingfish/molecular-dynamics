@@ -48,7 +48,7 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
         for (int j=k+1; j<N; j++){
             double dx = pbcSeparation(x[k] - x[j], Lx);
             double dy = pbcSeparation(y[k] - y[j], Ly);
-            double r2 = dx*dx + dy*dy ;
+            double r2 = dx*dx + dy*dy;
             ljp(uf, r2);
             double fx = uf[1] * dx;
             double fy = uf[1] * dy;
@@ -57,13 +57,14 @@ double computeAcceleration(double ax[], double ay[], double x[], double y[], dou
             ay[k] += fy;
             ax[j] -= fx;
             ay[j] -= fy;
+
             pe += uf[0];
            }
     }
     return pe; //returns the potential energy of the system at this time step
 }
 
-ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N, FILE *pos){
+ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[], double ay[], double uf[], double Lx, double Ly, double dt, int N, FILE *pos, int write){
     //take one step in the Verlet Algorithm
     //each x[i], vx[i], etc is associated with ONE particle
     double halfdt = 0.5 * dt;
@@ -90,7 +91,9 @@ ETuple verlet_step(double x[], double y[], double vx[], double vy[], double ax[]
       	ke += vx[i]*vx[i] + vy[i]*vy[i];
         x[i] = pbcPosition(x[i], Lx);
         y[i] = pbcPosition(y[i], Ly);
-        fprintf(pos, "1 %lf %lf 0\n", x[i], y[i]);
+        if(write==0){
+            fprintf(pos, "1 %lf %lf 0\n", x[i], y[i]);
+        }
     }
     ke = ke * 0.5;
 
@@ -103,7 +106,7 @@ void setVelocities(double vx[], double vy[], double initialKE, int N){
     double vxSum = 0.0;
     double vySum = 0.0;
 
-    srand48(time(NULL)); //seed the RNG
+    //srand48(time(NULL)); //seed the RNG
 
     for(int i=0; i<N; ++i){//assign random initial velocities
         vx[i] = drand48() - 0.5;
@@ -121,7 +124,7 @@ void setVelocities(double vx[], double vy[], double initialKE, int N){
     //rescale velocities to get desired initial KE
     double v2sum = 0;
     for(int i=0; i<N; ++i){
-        v2sum += vx[i] * vx[i] + vy[i] * vy[i];
+        v2sum += vx[i]*vx[i] + vy[i]*vy[i];
     }
     double kePerParticle = 0.5*v2sum/((double) N);
     double rescale = sqrt(initialKE/kePerParticle);
@@ -129,28 +132,6 @@ void setVelocities(double vx[], double vy[], double initialKE, int N){
     for(int i=0; i<N; ++i){
         vx[i] *= rescale;
         vy[i] *= rescale;
-    }
-}
-
-void setPositions(double x[], double y[], double Lx, double Ly, int N){
-    double rMin2 = pow(2.0, 1.0/3.0); //minimum separation distance
-    bool overlap;
-    srand48(time(NULL));
-    for(int i=0; i<N; ++i){
-        do{
-            overlap = 0;
-            x[i] = Lx * drand48();
-            y[i] = Ly * drand48();
-            int j=0;
-            while(j<i && !overlap){
-                double dx = x[i] - x[j];
-                double dy = y[i] - y[j];
-                if (dx*dx + dy*dy < rMin2){
-                    overlap = 1;
-                }
-                j++;
-            }
-        } while(overlap);
     }
 }
 
@@ -163,16 +144,32 @@ void setRectangularLattice(double x[], double y[], double Lx, double Ly, int nx,
             int i = ix + iy*ny;
             x[i] = dx * (ix+0.5);
             y[i] = dy * (iy+0.5);
-
         }
+    }
+}
+
+double measureTemp(double ke, int N){
+    return (2.0 * ke)/(3.0*(double) N);
+}
+
+double calcScaleFactor(double currentTemp, double desiredTemp){
+    return sqrt(desiredTemp/currentTemp);
+}
+
+void rescaleVelocities(double vx[], double vy[], double ke, double temp, int N){
+    double tk = measureTemp(ke, N);
+    double lambda = calcScaleFactor(tk, temp);
+    for (int i=0; i<N; i++){
+        vx[i] *= lambda;
+        vy[i] *= lambda;
     }
 }
 
 int main(int argc, char **argv){
 
-    if(argc!=9){
-        fprintf(stderr, "mdverlet requires 8 args: nx, ny, Lx, Ly, dt, tmax, initialKE, and init.\n");
-         return 1;
+    if(argc!=8){
+        fprintf(stderr, "mdverlet requires 7 args: nx, ny, Lx, Ly, dt, tmax, initialKE.\n");
+        return 1;
     }
 
     int nx = atoi(argv[1]);
@@ -196,25 +193,15 @@ int main(int argc, char **argv){
 
     double uf[2] = {0};
 
-    double rho = ((double) N)/(Lx*Ly);
-
     double t=0.0;
 
     double totalPEAccumulator=0.0;
 
     double radius = 0.5;
 
-    if (strcmp(argv[8], "rect")==0){
-        setRectangularLattice(x, y, Lx, Ly, nx, ny);
-    }
-    else if(strcmp(argv[8], "rand")==0){
-        setPositions(x, y, Lx, Ly, N);
-    }
-    else {
-        fprintf(stderr, "arg init can have values 'rect' or 'rand' only.\n");
-        return 1;
-    }
+    srand48(time(NULL)); //seed the RNG
 
+    setRectangularLattice(x, y, Lx, Ly, nx, ny);
     setVelocities(vx, vy, initialKE, N);
     computeAcceleration(ax, ay, x, y, uf, Lx, Ly, N);
 
@@ -226,11 +213,17 @@ int main(int argc, char **argv){
 
     fprintf(pos, "%i\n\n", N);
 
+    int steps=0;
+
     while(t<tmax){
         t+=dt;
-        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N, pos);
+        steps++;
+        int write = steps % 10;
+        ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N, pos, write);
         fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k, energies.u, energies.e);
-        fprintf(pos, "%i\n\n", N);
+        if (write == 0){
+            fprintf(pos, "%i\n\n", N);
+        }
     }
 
     fclose(fp);
