@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 
 void setCubicLattice(double x[], double y[], double z[], double Lx, double Ly, double Lz, int nx, int ny, int nz){
     double dx = Lx/((double) nx); //distance btw columns
@@ -21,6 +22,8 @@ void setCubicLattice(double x[], double y[], double z[], double Lx, double Ly, d
 }
 
 void setVelocities(double vx[], double vy[], double vz[], double initialKE, int N){
+    srand48(time(NULL)); // seed RNG
+
     double vxSum = 0.0;
     double vySum = 0.0;
     double vzSum = 0.0;
