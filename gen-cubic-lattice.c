@@ -12,7 +12,6 @@ void setCubicLattice(double x[], double y[], double z[], double Lx, double Ly, d
         for(int iy=0; iy<ny; ++iy){
             for(int iz=0; iz<nz; ++iz){
                 int i = ix + ny*(iy + iz*nz);
-                printf("%i\n", i);
                 x[i] = dx * (ix+0.5);
                 y[i] = dy * (iy+0.5);
                 z[i] = dz * (iz+0.5);
@@ -65,7 +64,7 @@ void setVelocities(double vx[], double vy[], double vz[], double initialKE, int 
 void printFile(char name[], double x[], double y[], double z[], double vx[], double vy[], double vz[], double density, int N){
     strcat(name, ".cfg");
     FILE* fp = fopen(name, "w");
-    fprintf(fp, "%lf \t %i \t 0\n", density, N); // write the file header
+    fprintf(fp, "%lf %i 0\n", density, N); // write the file header
 
     for (int i=0; i<N; i++){
         fprintf(fp, "%lf \t %lf \t %lf \t %lf \t %lf \t %lf\n", x[i], y[i], z[i], vx[i], vy[i], vz[i]);
@@ -74,15 +73,29 @@ void printFile(char name[], double x[], double y[], double z[], double vx[], dou
 }
 
 int main(int argc, char **argv){
-    double Lx = 5;
-    double Ly = 5;
-    double Lz = 5;
 
-    int nx = 5;
-    int ny = 5;
-    int nz = 5;
+    if(argc!=10){
+        fprintf(stderr, "Need 9 args: Filename, Lx, Ly, Lz, nx, ny, nz, initial KE, and density\n");
+        return 1;
+    }
+
+    if(strlen(argv[1])>31){
+        fprintf(stderr, "Filename length exceeded.");
+        return 1;
+    }
+
+    double Lx = atof(argv[2]);
+    double Ly = atof(argv[3]);
+    double Lz = atof(argv[4]);
+
+    int nx = atoi(argv[5]);
+    int ny = atoi(argv[6]);
+    int nz = atoi(argv[7]);
 
     int N = nx*ny*nz;
+
+    double initKE = atof(argv[8]);
+    double density = atof(argv[9]);
 
     double x[N];
     double y[N];
@@ -92,11 +105,13 @@ int main(int argc, char **argv){
     double vy[N];
     double vz[N];
 
-    char name[32] = "test";
+    char name[32];
+
+    strncpy(name, argv[1], 32);
 
     setCubicLattice(x, y, z, Lx, Ly, Lz, nx, ny, nz);
-    setVelocities(vx, vy, vz, 0.4, N);
-    printFile(name, x, y, z, vx, vy, vz, 0.109, N);
+    setVelocities(vx, vy, vz, initKE, N);
+    printFile(name, x, y, z, vx, vy, vz, density, N);
 
     return 0;
 }
