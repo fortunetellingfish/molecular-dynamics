@@ -35,7 +35,7 @@ void ljp(double uf[], double r2){
     uf[1] = 24.0/r2 * ( 2.0 * oneOverR12 - oneOverR6); //force over r
 }
 
-double computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double Lx, double Ly, double Lz, int N){
+double computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double ufcut[], double rcut2, double Lx, double Ly, double Lz, int N){
     //compute acceleration
     for (int k=0; k<N; k++){
         ax[k] = 0;
@@ -51,10 +51,22 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
             double dy = pbcSeparation(y[k] - y[j], Ly);
             double dz = pbcSeparation(z[k] - z[j], Lz);
             double r2 = dx*dx + dy*dy + dz*dz;
-            ljp(uf, r2);
-            double fx = uf[1] * dx;
-            double fy = uf[1] * dy;
-            double fz = uf[1] * dz;
+
+            double fx, fy, fz;
+
+            if (r2 < rcut2){
+            	ljp(uf, r2);
+            	fx = uf[1] * dx;
+            	fy = uf[1] * dy;
+            	fz = uf[1] * dz;
+                pe += uf[0];
+            }
+            else{
+                fx = ufcut[1] * dx;
+                fy = ufcut[1] * dy;
+                fz = ufcut[1] * dz;
+                pe += ufcut[0];
+            }
 
             ax[k] += fx;
             ay[k] += fy;
@@ -63,13 +75,12 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
             ay[j] -= fy;
             az[j] -= fz;
 
-            pe += uf[0];
            }
     }
     return pe; //returns the potential energy of the system at this time step
 }
 
-ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write){
+ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double ufcut[], double rcut2, double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write){
     //take one step in the Verlet Algorithm
     //each x[i], vx[i], etc is associated with ONE particle
     double halfdt = 0.5 * dt;
@@ -88,7 +99,7 @@ ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[],
         vz[i] += az[i] * halfdt;
     }
 
-    double pe = computeAcceleration(ax, ay, az, x, y, z, uf, Lx, Ly, Lz, N);
+    double pe = computeAcceleration(ax, ay, az, x, y, z, uf, ufcut, rcut2, Lx, Ly, Lz, N);
 
     //add new acceleration terms
     for(int i=0; i<N; i++){
@@ -213,20 +224,20 @@ void write_lmp_config(double x[], double y[], double z[], double vx[], double vy
 
     fprintf(fp, "Atoms\n\n");
     for (int i=0; i<N; i++){
-        fprintf(fp, "%i 1 %lf %lf %lf\n", i, x[i], y[i], z[i]);
+        fprintf(fp, "%i 1 %lf %lf %lf\n", i+1, x[i], y[i], z[i]);
     }
 
     fprintf(fp, "Velocities\n\n");
     for (int i=0; i<N; i++){
-        fprintf(fp, "%i %lf %lf %lf\n", i, vx[i], vy[i], vz[i]);
+        fprintf(fp, "%i %lf %lf %lf\n", i+1, vx[i], vy[i], vz[i]);
     }
 
 }
 
 int main(int argc, char **argv){
 
-    if(argc!=10){
-        fprintf(stderr, "mdverlet requires 9 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, initialKE.\n");
+    if(argc!=11){
+        fprintf(stderr, "mdverlet requires 10 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, initialKE, rcut\n");
         return 1;
     }
 
@@ -239,6 +250,7 @@ int main(int argc, char **argv){
     double dt = atof(argv[7]);
     double tmax = atof(argv[8]);
     double initialKE = atof(argv[9]);
+    double rcut = atof(argv[10]);
 
     double *x, *y, *z, *vx, *vy, *vz, *ax, *ay, *az;
 
@@ -256,6 +268,10 @@ int main(int argc, char **argv){
 
     double uf[2] = {0};
 
+    double ufcut[2] = {0};
+    double rcut2 = rcut*rcut;
+    ljp(ufcut, rcut2);
+
     double t=0.0;
 
     double totalPEAccumulator=0.0;
@@ -264,7 +280,7 @@ int main(int argc, char **argv){
 
     setRectangularLattice(x, y, z, Lx, Ly, Lz, nx, ny, nz);
     setVelocities(vx, vy, vz, initialKE, N);
-    computeAcceleration(ax, ay, az, x, y, z, uf, Lx, Ly, Lz, N);
+    computeAcceleration(ax, ay, az, x, y, z, uf, ufcut, rcut2, Lx, Ly, Lz, N);
 
     write_lmp_config(x, y, z, vx, vy, vz, N, Lx, Ly, Lz);
 
@@ -272,8 +288,8 @@ int main(int argc, char **argv){
     FILE* pos = fopen("pos.xyz", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
-    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, ((double) N)*initialKE, uf[0], ((double) N)*initialKE+uf[0]);
-
+//    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, ((double) N)*initialKE, uf[0], ((double) N)*initialKE+uf[0]);
+    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, initialKE, uf[0], initialKE+uf[0]);
     fprintf(pos, "%i\n\n", N);
 
     int steps=0;
@@ -283,8 +299,8 @@ int main(int argc, char **argv){
         t+=dt;
         steps++;
         write = steps % 10;
-        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, Lx, Ly, Lz, dt, N, pos, write);
-        fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k, energies.u, energies.e);
+        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, ufcut, rcut2, Lx, Ly, Lz, dt, N, pos, write);
+        fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N));
         if (write == 0){
             fprintf(pos, "%i\n\n", N);
         }
