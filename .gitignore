@@ -11,3 +11,5 @@ lamm.in lamm.out lammps-29Oct20 lammps-stable.tar.gz
 Cu-compression2.in lamm.in
 mdverlet3D
 lmp_config.data
+lamm-dip-mdv3D.agr lamm.in lamm.out lamm_en.dat lammps-29Oct20 lammps-stable.tar.gz
+Cu-compression2.in lamm.in

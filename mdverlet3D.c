@@ -11,6 +11,10 @@ typedef struct ETuple{
     double e;
 } ETuple;
 
+double min(double x, double y){
+    return x<y ? x : y;
+}
+
 double pbcPosition(double s, double L){
     //applies the periodic BC's to a position
     return s<0 ? fmod(s, L)+L : fmod(s,L);
@@ -35,7 +39,7 @@ void ljp(double uf[], double r2){
     uf[1] = 24.0/r2 * ( 2.0 * oneOverR12 - oneOverR6); //force over r
 }
 
-double computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double rcut2, double Lx, double Ly, double Lz, int N){
+double computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, int N){
     //compute acceleration
     for (int k=0; k<N; k++){
         ax[k] = 0;
@@ -59,7 +63,7 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
             	fx = uf[1] * dx;
             	fy = uf[1] * dy;
             	fz = uf[1] * dz;
-                pe += uf[0];
+                pe += uf[0] + shift;
             }
             else{
                 fx = 0;
@@ -79,7 +83,7 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
     return pe; //returns the potential energy of the system at this time step
 }
 
-ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double rcut2, double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write){
+ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write){
     //take one step in the Verlet Algorithm
     //each x[i], vx[i], etc is associated with ONE particle
     double halfdt = 0.5 * dt;
@@ -98,7 +102,7 @@ ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[],
         vz[i] += az[i] * halfdt;
     }
 
-    double pe = computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, Lx, Ly, Lz, N);
+    double pe = computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N);
 
     //add new acceleration terms
     for(int i=0; i<N; i++){
@@ -236,7 +240,7 @@ void write_lmp_config(double x[], double y[], double z[], double vx[], double vy
 int main(int argc, char **argv){
 
     if(argc!=11){
-        fprintf(stderr, "mdverlet requires 10 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, initialKE, rcut\n");
+        fprintf(stderr, "mdverlet requires 10 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, ensemble, rcut\n");
         return 1;
     }
 
@@ -248,8 +252,13 @@ int main(int argc, char **argv){
     double Lz = atof(argv[6]);
     double dt = atof(argv[7]);
     double tmax = atof(argv[8]);
-    double initialKE = atof(argv[9]);
     double rcut = atof(argv[10]);
+
+    double initialKE = 0;
+    double temp;
+    
+
+
 
     double *x, *y, *z, *vx, *vy, *vz, *ax, *ay, *az;
 
@@ -269,6 +278,8 @@ int main(int argc, char **argv){
 
     double rcut2 = rcut*rcut;
 
+    double shift = min( Lx, -4. * (pow((1./rcut2), 6) - pow((1/rcut2), 3))); //TODO? change so that only 1 lattice parameter can be provided?
+
     double t=0.0;
 
     double totalPEAccumulator=0.0;
@@ -277,11 +288,11 @@ int main(int argc, char **argv){
 
     setRectangularLattice(x, y, z, Lx, Ly, Lz, nx, ny, nz);
     setVelocities(vx, vy, vz, initialKE, N);
-    computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, Lx, Ly, Lz, N);
+    computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N);
 
     write_lmp_config(x, y, z, vx, vy, vz, N, Lx, Ly, Lz);
 
-    FILE* fp = fopen("test.dat", "w");
+    FILE* fp = fopen("energies.dat", "w");
     FILE* pos = fopen("pos.xyz", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
@@ -314,6 +325,8 @@ int main(int argc, char **argv){
     free(ax);
     free(ay);
     free(az);
+
+    printf("Done. Check file energies.dat for energy data and file pos.xyz for position data.\n");
 
     return 0;
 }
