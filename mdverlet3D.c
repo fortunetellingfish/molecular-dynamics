@@ -256,9 +256,20 @@ int main(int argc, char **argv){
 
     double initialKE = 0;
     double temp;
-    
 
-
+    if (strcmp(argv[9], "nve")==0){
+        printf("Provide initial KE:");
+        scanf("%lf", &initialKE);
+    }
+    else if (strcmp(argv[9], "nvt")==0){
+        printf("Provide temperature:");
+        scanf("%lf", &temp);
+        initialKE = 3.0/2.0 * temp;
+    }
+    else{
+        printf("Please provide valid ensemble. Exiting.\n");
+        return 1;
+    }
 
     double *x, *y, *z, *vx, *vy, *vz, *ax, *ay, *az;
 
@@ -294,6 +305,7 @@ int main(int argc, char **argv){
 
     FILE* fp = fopen("energies.dat", "w");
     FILE* pos = fopen("pos.xyz", "w");
+    FILE* tempFile = fopen("temp.dat", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
 //    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, ((double) N)*initialKE, uf[0], ((double) N)*initialKE+uf[0]);
@@ -303,14 +315,21 @@ int main(int argc, char **argv){
     int steps=0;
     int write;
 
+    double tk;
+
     while(t<tmax){
         t+=dt;
         steps++;
         write = steps % 10;
-        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, rcut2, Lx, Ly, Lz, dt, N, pos, write);
+        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, rcut2, shift, Lx, Ly, Lz, dt, N, pos, write);
         fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N));
+        if ((strcmp(argv[9], "nvt") == 0) && (steps % 100 == 0)){//TODO make this an input
+            rescaleVelocities(vx, vy, vz, energies.k, temp, N);
+        }
+        tk = measureTemp(energies.k, N);
         if (write == 0){
             fprintf(pos, "%i\n\n", N);
+            fprintf(tempFile, "%lf %lf\n", t, tk);
         }
     }
 
