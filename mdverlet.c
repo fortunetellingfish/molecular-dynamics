@@ -221,6 +221,9 @@ int main(int argc, char **argv){
         int write = steps % 10;
         ETuple energies = verlet_step(x, y, vx, vy, ax, ay, uf, Lx, Ly, dt, N, pos, write);
         fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k, energies.u, energies.e);
+        for (int i=0; i<N; i++){
+            fprintf(pos, "%lf %lf 0\n", x[i], y[i]);
+        }
         if (write == 0){
             fprintf(pos, "%i\n\n", N);
         }

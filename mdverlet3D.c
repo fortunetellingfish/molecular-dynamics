@@ -6,10 +6,17 @@
 #include <string.h>
 
 typedef struct ETuple{
-    double k;
-    double u;
-    double e;
+    double k; //KE
+    double u; //PE
+    double e; //TotE
+    double p; //Pressure
+    double t; //Temperature
 } ETuple;
+
+typedef struct AccTuple{
+    double pe;
+    double vir;
+} AccTuple;
 
 double min(double x, double y){
     return x<y ? x : y;
@@ -27,6 +34,10 @@ double pbcSeparation(double ds, double L){
     return ds;
 }
 
+double measureTemp(double ke, int N){
+    return (2.0 * ke)/(3.0*((double) N));
+}
+
 void ljp(double uf[], double r2){
     //calculates potential and force per unit distance assoc. w/ Lennard-Jones ptl
     //uf is an array with ptl energy at 0 and f over r at 1
@@ -39,7 +50,23 @@ void ljp(double uf[], double r2){
     uf[1] = 24.0/r2 * ( 2.0 * oneOverR12 - oneOverR6); //force over r
 }
 
-double computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, int N){
+void colloidp(double uf[], double r2, double rc2){
+    //calculates potential and force per unit distance associated with the "colloidal" pair potential
+    // proposed as a LJ alternative by Wang et al. (2019)
+    double rc = sqrt(rc2);
+    double oneOverRc2 = 1./(rc2);
+    double alpha = 2.*rc2*pow(3./(2.*(rc2 - 1.)),3); //well depth parameter
+
+    double r = sqrt(r2);
+    double oneOverR = 1./r;
+    double oneOverR2 = 1./r2;
+
+    uf[0] = alpha * (oneOverR2 - 1.) * pow((rc2*oneOverR2 - 1.), 2); //potential
+    uf[1] = 2.*alpha*oneOverR2*oneOverR2*oneOverR * (rc2*oneOverR2 -1.) * (3.*rc2*oneOverR2 -2.*rc2 -1.); //force per unit distance
+
+}
+
+AccTuple computeAcceleration(double ax[], double ay[], double az[], double x[], double y[], double z[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, int N, char* ptl){
     //compute acceleration
     for (int k=0; k<N; k++){
         ax[k] = 0;
@@ -48,6 +75,7 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
     }
 
     double pe = 0.0;
+    double vir = 0.0;
 
     for (int k=0; k<N-1; k++){
         for (int j=k+1; j<N; j++){
@@ -59,11 +87,21 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
             double fx, fy, fz;
 
             if (r2 < rcut2){
-            	ljp(uf, r2);
+                if(strcmp(ptl, "lj")==0){
+            	    ljp(uf, r2);
+                }
+                else if(strcmp(ptl, "colloid")==0){
+                    colloidp(uf, r2, rcut2);
+                }
             	fx = uf[1] * dx;
             	fy = uf[1] * dy;
             	fz = uf[1] * dz;
-                pe += uf[0] + shift;
+                pe += uf[0];
+
+		if (strcmp(ptl, "lj")==0){
+                    pe += shift;
+                }
+
             }
             else{
                 fx = 0;
@@ -78,12 +116,15 @@ double computeAcceleration(double ax[], double ay[], double az[], double x[], do
             ay[j] -= fy;
             az[j] -= fz;
 
+            vir += dx*fx + dy*fy + dz*fz;
+
            }
     }
-    return pe; //returns the potential energy of the system at this time step
+    AccTuple acc = {pe, vir};
+    return acc; //returns the potential energy & total virial of the system at this time step
 }
 
-ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write){
+ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[], double vz[], double ax[], double ay[], double az[], double uf[], double rcut2, double shift, double Lx, double Ly, double Lz, double dt, int N, FILE *pos, int write, char* ptl){
     //take one step in the Verlet Algorithm
     //each x[i], vx[i], etc is associated with ONE particle
     double halfdt = 0.5 * dt;
@@ -102,7 +143,7 @@ ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[],
         vz[i] += az[i] * halfdt;
     }
 
-    double pe = computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N);
+    AccTuple acc = computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N, ptl);
 
     //add new acceleration terms
     for(int i=0; i<N; i++){
@@ -120,9 +161,14 @@ ETuple verlet_step(double x[], double y[], double z[], double vx[], double vy[],
     }
     ke = ke * 0.5;
 
-    ETuple energies = {ke, pe, ke+pe};
+    double temp = measureTemp(ke, N);
+    double vol = Lx*Ly*Lz;
 
-    return energies; //return the kinetic and potential energies of this step
+    double pressure = 1/vol*(N*temp + 1./3. * acc.vir);
+
+    ETuple energies = {ke, acc.pe, ke+acc.pe, pressure, temp};
+
+    return energies; //return the kinetic, potential, total energies, pressure & temp of this step
 }
 
 void setVelocities(double vx[], double vy[], double vz[], double initialKE, int N){
@@ -180,10 +226,6 @@ void setRectangularLattice(double x[], double y[], double z[], double Lx, double
     }
 }
 
-double measureTemp(double ke, int N){
-    return (2.0 * ke)/(3.0*((double) N));
-}
-
 double calcScaleFactor(double currentTemp, double desiredTemp){
     return sqrt(desiredTemp/currentTemp);
 }
@@ -239,8 +281,8 @@ void write_lmp_config(double x[], double y[], double z[], double vx[], double vy
 
 int main(int argc, char **argv){
 
-    if(argc!=11){
-        fprintf(stderr, "mdverlet requires 10 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, ensemble, rcut\n");
+    if(argc!=12){
+        fprintf(stderr, "mdverlet3D requires 11 args: nx, ny, nz, Lx, Ly, Lz, dt, tmax, ensemble, rcut, potential\n");
         return 1;
     }
 
@@ -285,21 +327,24 @@ int main(int argc, char **argv){
     ay = malloc(N*sizeof(double));
     az = malloc(N*sizeof(double));
 
+    if (strcmp(argv[11], "lj") && strcmp(argv[11], "colloid")){
+        printf("Invalid short range potential. Exiting.\n");
+        return 1;
+    }
+
     double uf[2] = {0};
 
     double rcut2 = rcut*rcut;
 
-    double shift = min( Lx, -4. * (pow((1./rcut2), 6) - pow((1/rcut2), 3))); //TODO? change so that only 1 lattice parameter can be provided?
+    double shift = min( Lx/2, -4. * (pow((1./rcut2), 6) - pow((1/rcut2), 3))); //TODO? change so that only 1 lattice parameter can be provided?
+
+    printf("%lf\n", shift);
 
     double t=0.0;
 
-    double totalPEAccumulator=0.0;
-
-    double radius = 0.5;
-
     setRectangularLattice(x, y, z, Lx, Ly, Lz, nx, ny, nz);
     setVelocities(vx, vy, vz, initialKE, N);
-    computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N);
+    computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N, argv[11]);
 
     write_lmp_config(x, y, z, vx, vy, vz, N, Lx, Ly, Lz);
 
@@ -321,20 +366,20 @@ int main(int argc, char **argv){
         t+=dt;
         steps++;
         write = steps % 10;
-        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, rcut2, shift, Lx, Ly, Lz, dt, N, pos, write);
-        fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N));
+        ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, rcut2, shift, Lx, Ly, Lz, dt, N, pos, write, argv[11]);
+        fprintf(fp, "%lf \t %lf \t %lf \t %lf \t %lf\n", t, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N), energies.p);
         if ((strcmp(argv[9], "nvt") == 0) && (steps % 100 == 0)){//TODO make this an input
             rescaleVelocities(vx, vy, vz, energies.k, temp, N);
         }
-        tk = measureTemp(energies.k, N);
         if (write == 0){
             fprintf(pos, "%i\n\n", N);
-            fprintf(tempFile, "%lf %lf\n", t, tk);
+            fprintf(tempFile, "%lf %lf\n", t, energies.t);
         }
     }
 
     fclose(fp);
     fclose(pos);
+    fclose(tempFile);
     free(x);
     free(y);
     free(z);

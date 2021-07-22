@@ -77,8 +77,8 @@ void printFile(char name[], double x[], double y[], double z[], double vx[], dou
 
 int main(int argc, char **argv){
 
-    if(argc!=10){
-        fprintf(stderr, "Need 9 args: Filename, Lx, Ly, Lz, nx, ny, nz, initial KE, and density\n");
+    if(argc!=9){
+        fprintf(stderr, "Need 8 args: Filename, Lx, Ly, Lz, nx, ny, nz, & initial KE.\n");
         return 1;
     }
 
@@ -98,7 +98,7 @@ int main(int argc, char **argv){
     int N = nx*ny*nz;
 
     double initKE = atof(argv[8]);
-    double density = atof(argv[9]);
+    double density = N/(Lx*Ly*Lz);
 
     double x[N];
     double y[N];
