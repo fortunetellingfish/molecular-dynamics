@@ -17,3 +17,11 @@ lamm*
 *.in
 *.agr
 *.jpg
+gen-dipole-in
+gen-lmp-in
+generate-colloid-tab
+in.lammtest
+avg.sh avgdip.sh avglmp.sh avgmdv.sh reset-dip-stepcount.sh
+avg.sh
+avgdip.sh
+avgmdv.sh

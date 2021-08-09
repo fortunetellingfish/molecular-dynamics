@@ -35,7 +35,7 @@ double pbcSeparation(double ds, double L){
 }
 
 double measureTemp(double ke, int N){
-    return (2.0 * ke)/(3.0*((double) N));
+    return (2.0 * ke)/(3.0*((double) N)-3.); /////////
 }
 
 void ljp(double uf[], double r2){
@@ -62,7 +62,7 @@ void colloidp(double uf[], double r2, double rc2){
     double oneOverR2 = 1./r2;
 
     uf[0] = alpha * (oneOverR2 - 1.) * pow((rc2*oneOverR2 - 1.), 2); //potential
-    uf[1] = 2.*alpha*oneOverR2*oneOverR2*oneOverR * (rc2*oneOverR2 -1.) * (3.*rc2*oneOverR2 -2.*rc2 -1.); //force per unit distance
+    uf[1] = 2.*alpha*oneOverR2*oneOverR2 * (rc2*oneOverR2 -1.) * (3.*rc2*oneOverR2 -2.*rc2 -1.); //force per unit distance
 
 }
 
@@ -338,57 +338,66 @@ int main(int argc, char **argv){
 
     double shift = min( Lx/2, -4. * (pow((1./rcut2), 6) - pow((1/rcut2), 3))); //TODO? change so that only 1 lattice parameter can be provided?
 
-    printf("%lf\n", shift);
-
     double t=0.0;
+    double p0;
 
     setRectangularLattice(x, y, z, Lx, Ly, Lz, nx, ny, nz);
     setVelocities(vx, vy, vz, initialKE, N);
-    computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N, argv[11]);
+    AccTuple acc = computeAcceleration(ax, ay, az, x, y, z, uf, rcut2, shift, Lx, Ly, Lz, N, argv[11]);
 
     write_lmp_config(x, y, z, vx, vy, vz, N, Lx, Ly, Lz);
+
+    p0 = N/(Lx*Ly*Lz) *(measureTemp(initialKE, N) + acc.vir/(3.* N));
+
+    int steps = 0;
 
     FILE* fp = fopen("energies.dat", "w");
     FILE* pos = fopen("pos.xyz", "w");
     FILE* tempFile = fopen("temp.dat", "w");
+    FILE* avg = fopen("avg.dat", "w");
 
     fprintf(fp, "# t \t KE \t PE\n");
 //    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, ((double) N)*initialKE, uf[0], ((double) N)*initialKE+uf[0]);
-    fprintf(fp, "%lf \t %lf \t %lf \t %lf\n", t, initialKE, uf[0], initialKE+uf[0]);
+    fprintf(fp, "%i \t %lf \t %lf \t %lf \t %lf\n", steps, initialKE, uf[0]/((double) N), initialKE+uf[0]/((double) N), p0);
     fprintf(pos, "%i\n\n", N);
+    fprintf(avg, "# steps, KE, PE, E, Press\n");
 
-    int steps=0;
     int write;
 
     double tk;
+
+    ETuple avgs = {initialKE, acc.pe/((double) N), initialKE+acc.pe/((double) N), p0};
 
     while(t<tmax){
         t+=dt;
         steps++;
         write = steps % 10;
         ETuple energies = verlet_step(x, y, z, vx, vy, vz, ax, ay, az, uf, rcut2, shift, Lx, Ly, Lz, dt, N, pos, write, argv[11]);
-        fprintf(fp, "%lf \t %lf \t %lf \t %lf \t %lf\n", t, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N), energies.p);
+        fprintf(fp, "%i \t %lf \t %lf \t %lf \t %lf\n", steps, energies.k/((double) N), energies.u/((double) N), energies.e/((double) N), energies.p);
         if ((strcmp(argv[9], "nvt") == 0) && (steps % 100 == 0)){//TODO make this an input
             rescaleVelocities(vx, vy, vz, energies.k, temp, N);
         }
+
+        avgs.k += energies.k/((double) N);
+        avgs.u += energies.u/((double) N);
+        avgs.e += energies.e/((double) N);
+        avgs.p += energies.p;
+
+
         if (write == 0){
             fprintf(pos, "%i\n\n", N);
             fprintf(tempFile, "%lf %lf\n", t, energies.t);
+            fprintf(avg, "%i \t %lf \t %lf \t %lf \t %lf\n", steps, avgs.k/((double) steps+1.), avgs.u/((double) steps+1.), avgs.e/((double) steps+1.), avgs.p/((double) steps+1.));
         }
     }
 
     fclose(fp);
     fclose(pos);
     fclose(tempFile);
-    free(x);
-    free(y);
-    free(z);
-    free(vx);
-    free(vy);
-    free(vz);
-    free(ax);
-    free(ay);
-    free(az);
+    fclose(avg);
+    free(x);    free(y);    free(z);
+    free(vx);    free(vy);    free(vz);
+    free(ax);    free(ay);    free(az);
 
     printf("Done. Check file energies.dat for energy data and file pos.xyz for position data.\n");
 

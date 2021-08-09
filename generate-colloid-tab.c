@@ -19,7 +19,7 @@ Tuple compute_row(double r, double rc, double alpha){
     Tuple row;
 
     row.pe = alpha * (ri2 - 1.) * (rcri2 - 1.) * (rcri2 - 1.); // Potential energy
-    row.f = 2.*alpha*ri2*ri2*(rcri2 - 1.)*(3.*rcri2 - 2.*rc2 -1.); // force
+    row.f = 2.*alpha*ri2*ri*(rcri2 - 1.)*(3.*rcri2 - 2.*rc2 -1.); // force
 
     return row;
 }
